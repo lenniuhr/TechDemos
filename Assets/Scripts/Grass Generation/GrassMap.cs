@@ -65,7 +65,7 @@ namespace LenniUhr.Grass
 
         public void InitBuffers()
         {
-            if (m_GrassMesh == null)
+            if (m_GrassMesh == null || m_GrassMesh.triangles.Length == 0)
             {
                 Debug.LogWarning("Grass mesh is missing, skipping buffer generation.");
                 return;

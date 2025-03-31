@@ -195,11 +195,11 @@ namespace LenniUhr.Grass
                 grassComputeShader.Dispatch(m_Kernel, m_DispatchSize, 1, 1);
             }
 
-            //float area = radius * radius * math.PI;
-            //int maxDrawTriangles = (int)(2 * area * (MAX_DENSITY * 4));
-            //GraphicsBuffer.IndirectDrawArgs[] drawArgs = new GraphicsBuffer.IndirectDrawArgs[1];
-            //m_CommandBuffer.GetData(drawArgs);
-            //Debug.Log("Command buffer vertex count: " + drawArgs[0].vertexCountPerInstance + ", max draw triangles: " + maxDrawTriangles);
+            /*float area = Radius * Radius * math.PI;
+            int maxDrawTriangles = (int)(2 * area * MAX_DENSITY) * 2;
+            GraphicsBuffer.IndirectDrawArgs[] drawArgs = new GraphicsBuffer.IndirectDrawArgs[1];
+            m_CommandBuffer.GetData(drawArgs);
+            Debug.Log("Command buffer vertex count: " + drawArgs[0].vertexCountPerInstance + ", max draw triangles: " + maxDrawTriangles);*/
 
             RenderParams rp = new RenderParams(material);
             rp.worldBounds = m_Bounds;
