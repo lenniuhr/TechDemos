@@ -1,0 +1,69 @@
+#pragma kernel Density
+#include "Assets/Scripts/Terrain Generation/Compute/Density.compute"
+#include "Assets/Scripts/Terrain Generation/Compute/SimplexNoise.compute"
+
+static const float LACUNARITY = 1.96;
+
+float _Scale;
+float _Persistance;
+int _Octaves;
+RWStructuredBuffer<float3> _OctaveOffsets;
+
+float _NoiseWeight;
+float _FloorOffset;
+
+int _Terraces;
+float _TerraceWeight;
+
+float _HardFloor;
+float _HardFloorWeight;
+
+[numthreads(NUM_THREADS, NUM_THREADS, NUM_THREADS)]
+void Density (int3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _NumPointsPerAxis || id.y >= _NumPointsPerAxis || id.z >= _NumPointsPerAxis) 
+    {
+        return;
+    }
+
+    int index = IndexFromCoord(id.x, id.y, id.z);
+    float3 worldPos = GetWorldPos(id);
+    
+    float density = 0;
+    if (InBoxBounds(worldPos)) 
+    {
+        float3 boxPos = worldPos - _BoxCenter;
+        float contribution = GetCapsuleContribution(boxPos);
+
+        float amplitude = 1;
+        float frequency = _Scale;
+        
+        float noise = 0;
+        for (int i = 0; i < _Octaves; i++) {
+
+            float3 samplePoint = mul(_SampleMatrix, float4(boxPos * frequency, 1)).xyz + _OctaveOffsets[i];
+            noise += snoise(samplePoint) * amplitude;
+
+            amplitude *= _Persistance;
+            frequency *= LACUNARITY;
+        }
+
+        float groundDensity = -boxPos.y + (_FloorOffset * (_BoxScale.y / 2));
+        float noiseDensity = noise * _NoiseWeight * _BoxScale.y;
+
+        // terrace
+        float terraceHeight = _BoxScale.y / _Terraces;
+        float terraceY = boxPos.y - _FloorOffset + _BoxScale.y / 2; // let the terraces start at the bottom of the density box
+        float terraceDensity = (terraceY % terraceHeight) * _TerraceWeight;
+
+        // hard floor
+        float hardFloorDensity = 0.0;
+        if (boxPos.y < _HardFloor * (_BoxScale.y / 2.0)) {
+            hardFloorDensity += _HardFloorWeight;
+        }
+
+        density = max(0, (groundDensity + noiseDensity + terraceDensity + hardFloorDensity) * contribution);
+    }
+    _Points[index] = float4(id.x, id.y, id.z, _Points[index].w + density);
+    UpdateBiome(index, density);
+}

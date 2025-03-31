@@ -1,0 +1,183 @@
+#pragma kernel MarchingCubes
+#include "Assets/Scripts/Terrain Generation/Marching Cubes/MarchTables.compute"
+
+static const int NUM_THREADS = 8;
+
+struct Vertex
+{
+    float3 position;
+    float3 normal;
+    int2 id;
+    float weight;
+};
+
+struct Triangle
+{
+    Vertex v0;
+    Vertex v1;
+    Vertex v2;
+    int biomeId;
+};
+
+struct Biome
+{
+    uint id;
+    float strength;
+};
+
+// Buffers
+AppendStructuredBuffer<Triangle> _Triangles;
+RWStructuredBuffer<float4> _Points;
+RWStructuredBuffer<Biome> _Biomes;
+
+// Variables
+int _ChunkSize;
+int _NumPointsPerAxis;
+float _SurfaceLevel;
+float _BlendGap;
+
+int indexFromCoord(int3 coord) {
+    return coord.z + coord.y * _NumPointsPerAxis + coord.x * _NumPointsPerAxis * _NumPointsPerAxis;
+}
+
+float sampleDensity(int3 coord) {
+    // clamp the coord inside the box (0, numPointsPerAxis - 1)
+	//coord = max(0, coord);
+	return _Points[indexFromCoord(coord)].w;
+}
+
+float3 calculateNormal(int3 coord) {
+
+	float dx = sampleDensity(coord + int3(1, 0, 0)) - sampleDensity(coord - int3(1, 0, 0));
+	float dy = sampleDensity(coord + int3(0, 1, 0)) - sampleDensity(coord - int3(0, 1, 0));
+	float dz = sampleDensity(coord + int3(0, 0, 1)) - sampleDensity(coord - int3(0, 0, 1));
+	return -normalize(float3(dx, dy, dz));
+}
+
+Vertex createVertex(int3 coordA, int3 coordB, out int biomeId) 
+{
+    Vertex v;
+
+    // position
+    float densityA = sampleDensity(coordA);
+    float densityB = sampleDensity(coordB);
+    float t = (_SurfaceLevel - densityA) / (densityB - densityA);
+    v.position = coordA + t * (coordB - coordA);
+
+    // ids
+    int idA = indexFromCoord(coordA);
+    int idB = indexFromCoord(coordB);
+    v.id = int2(min(idA, idB), max(idA, idB));
+
+    // biomes
+    if (_Biomes[idA].strength > _Biomes[idB].strength)
+    {
+        biomeId = _Biomes[idA].id;
+    } else {
+        biomeId = _Biomes[idB].id;
+    }
+
+    // normal
+	float3 normalA = calculateNormal(coordA);
+	float3 normalB = calculateNormal(coordB);
+    v.normal = normalize(normalA + t * (normalB - normalA));
+    return v;
+}
+
+void AppendTriangle(Triangle tri, float3 triNormal, uint biomeId, int3 offsets, int3 weights) {
+    tri.biomeId = biomeId;
+    tri.v0.position += triNormal * _BlendGap * offsets.x;
+    tri.v1.position += triNormal * _BlendGap * offsets.y;
+    tri.v2.position += triNormal * _BlendGap * offsets.z;
+    tri.v0.weight = weights.x;
+    tri.v1.weight = weights.y;
+    tri.v2.weight = weights.z;
+    _Triangles.Append(tri);
+}
+
+[numthreads(NUM_THREADS, NUM_THREADS, NUM_THREADS)]
+void MarchingCubes(int3 id : SV_DispatchThreadID) {
+
+    // Skip id's outside of box (can happen when the chunkSize is not a multiple of 8)
+    if (id.x >= _ChunkSize || id.y >= _ChunkSize || id.z >= _ChunkSize)
+    {
+        return;
+    }
+
+    // offset for the normal calculation (to sample noise values outside the chunk)
+    id = id + int3(1, 1, 1);
+
+    int3 cubeCorners[8] = {
+        id + int3(0, 0, 0),
+        id + int3(1, 0, 0),
+        id + int3(1, 0, 1),
+        id + int3(0, 0, 1),
+        id + int3(0, 1, 0),
+        id + int3(1, 1, 0),
+        id + int3(1, 1, 1),
+        id + int3(0, 1, 1)
+    }; 
+
+    // When the density is above the surface level, the bit is set to 1 -> inside
+    // A value of 0 means cube is entirely inside surface; 255 entirely outside.
+    int cubeIndex = 0;
+    if (sampleDensity(cubeCorners[0]) > _SurfaceLevel)
+        cubeIndex |= 1;
+    if (sampleDensity(cubeCorners[1]) > _SurfaceLevel)
+        cubeIndex |= 2;
+    if (sampleDensity(cubeCorners[2]) > _SurfaceLevel)
+        cubeIndex |= 4;
+    if (sampleDensity(cubeCorners[3]) > _SurfaceLevel)
+        cubeIndex |= 8;
+    if (sampleDensity(cubeCorners[4]) > _SurfaceLevel)
+        cubeIndex |= 16;
+    if (sampleDensity(cubeCorners[5]) > _SurfaceLevel)
+        cubeIndex |= 32;
+    if (sampleDensity(cubeCorners[6]) > _SurfaceLevel)
+        cubeIndex |= 64;
+    if (sampleDensity(cubeCorners[7]) > _SurfaceLevel)
+        cubeIndex |= 128;
+
+    // Create triangles for current cube configuration
+    for (int i = 0; triangulation[cubeIndex][i] != -1; i += 3) {
+        // Get indices of corner points A and B for each of the three edges
+        // of the cube that need to be joined to form the triangle.
+        int a0 = cornerIndexAFromEdge[triangulation[cubeIndex][i]];
+        int a1 = cornerIndexBFromEdge[triangulation[cubeIndex][i]];
+
+        int b0 = cornerIndexAFromEdge[triangulation[cubeIndex][i + 1]];
+        int b1 = cornerIndexBFromEdge[triangulation[cubeIndex][i + 1]];
+
+        int c0 = cornerIndexAFromEdge[triangulation[cubeIndex][i + 2]];
+        int c1 = cornerIndexBFromEdge[triangulation[cubeIndex][i + 2]];
+       
+        Triangle tri;
+        int biomeId_v0;
+        int biomeId_v1;
+        int biomeId_v2;
+        tri.v0 = createVertex(cubeCorners[a0], cubeCorners[a1], biomeId_v0);
+        tri.v1 = createVertex(cubeCorners[b0], cubeCorners[b1], biomeId_v1);
+        tri.v2 = createVertex(cubeCorners[c0], cubeCorners[c1], biomeId_v2);
+
+        // triangle normal for proper biome blending
+        float3 triNormal = normalize(cross(tri.v1.position - tri.v0.position, tri.v2.position - tri.v0.position));
+
+        uint3 biomes = uint3(biomeId_v0, biomeId_v1, biomeId_v2);
+
+        int blendIndex = 0;
+        if (biomeId_v0 > biomeId_v1 || biomeId_v1 == biomeId_v2) blendIndex |= 1;
+        if (biomeId_v1 > biomeId_v2 || biomeId_v2 == biomeId_v0) blendIndex |= 2;
+        if (biomeId_v2 > biomeId_v0 || biomeId_v0 == biomeId_v1) blendIndex |= 4;
+        if (biomeId_v0 != biomeId_v1 && biomeId_v0 != biomeId_v2 && biomeId_v1 != biomeId_v2) blendIndex |= 8;
+        
+        AppendTriangle(tri, triNormal, biomes[biomeIdsCase0[blendIndex]], biomeOffsetsCase0[blendIndex], int3(1, 1, 1));
+
+        if(blendIndex != 7) {
+            AppendTriangle(tri, triNormal, biomes[biomeIdsCase1[blendIndex]], biomeOffsetsCase1[blendIndex], biomeWeightsCase1[blendIndex]);
+        }
+
+        if(blendIndex > 7) {
+            AppendTriangle(tri, triNormal, biomes[biomeIdsCase2[blendIndex]], biomeOffsetsCase2[blendIndex], biomeWeightsCase2[blendIndex]);
+        }
+    }
+}

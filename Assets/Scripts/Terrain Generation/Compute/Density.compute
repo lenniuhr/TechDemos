@@ -1,0 +1,71 @@
+static const int NUM_THREADS = 8;
+
+struct Biome
+{
+    uint id;
+    float strength;
+};
+
+int _NumPointsPerAxis;
+int _BiomeId;
+
+float3 _Center;
+float3 _Offset;
+
+float3 _BoxCenter;
+float3 _BoxScale;
+
+float4x4 _SampleMatrix;
+
+RWStructuredBuffer<float4> _Points;
+RWStructuredBuffer<Biome> _Biomes;
+
+float3 GetWorldPos(int3 id) 
+{
+    return id + _Center + _Offset;
+}
+
+float GetSphericalContribution(float3 boxPos) 
+{
+    float distToCenter01 = length(boxPos / (_BoxScale / 2.0));
+    return smoothstep(1, 0, distToCenter01);
+}
+
+float GetCapsuleContribution(float3 boxPos) 
+{
+
+    float maxScale = max(_BoxScale.x, _BoxScale.z);
+    float yOffset = max(0, (_BoxScale.y - maxScale) / 2);
+    
+    float3 capsuleScale = _BoxScale;
+    float3 capsuleOffset = 0;
+    if(yOffset > 0) {
+        float yCenter = sign(boxPos.y) * min(yOffset, abs(boxPos.y));
+        capsuleOffset.y = yCenter;
+        capsuleScale.y = maxScale;
+    }
+
+    float distToCenter01 = length((boxPos - capsuleOffset) / (capsuleScale / 2));
+    return smoothstep(1, 0, distToCenter01);
+}
+
+int IndexFromCoord(int x, int y, int z) 
+{
+    return z + y * _NumPointsPerAxis + x * _NumPointsPerAxis * _NumPointsPerAxis;
+}
+
+bool InBoxBounds(float3 worldPos) 
+{
+    return worldPos.x < _BoxCenter.x + (_BoxScale.x / 2.0) && worldPos.x > _BoxCenter.x - (_BoxScale.x / 2.0)
+        && worldPos.y < _BoxCenter.y + (_BoxScale.y / 2.0) && worldPos.y > _BoxCenter.y - (_BoxScale.y / 2.0)
+        && worldPos.z < _BoxCenter.z + (_BoxScale.z / 2.0) && worldPos.z > _BoxCenter.z - (_BoxScale.z / 2.0);
+}
+
+void UpdateBiome(int index, float strength) 
+{
+    if (_Biomes[index].strength < strength)
+    {
+        _Biomes[index].id = _BiomeId;
+        _Biomes[index].strength = strength;
+    }
+}

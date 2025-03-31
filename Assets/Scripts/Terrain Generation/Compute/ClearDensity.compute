@@ -1,0 +1,11 @@
+#pragma kernel Clear
+#include "Assets/Scripts/Terrain Generation/Compute/Density.compute"
+
+[numthreads(NUM_THREADS, NUM_THREADS, NUM_THREADS)]
+void Clear (int3 id : SV_DispatchThreadID)
+{
+    int index = IndexFromCoord(id.x, id.y, id.z);
+    _Points[index] = float4(id.x, id.y, id.z, 0);
+    _Biomes[index].id = 0;
+    _Biomes[index].strength = 0;
+}
