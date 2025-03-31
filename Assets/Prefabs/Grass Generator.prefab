@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &8198531231568989183
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5039663627521107086}
+  - component: {fileID: 8687743516037004844}
+  m_Layer: 0
+  m_Name: Grass Generator
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &5039663627521107086
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8198531231568989183}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &8687743516037004844
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8198531231568989183}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ce51565701e808a48bc98f47b6018f09, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  generatePointsCS: {fileID: 7200000, guid: ec62bc78d61a583458837bad936fb46b, type: 3}
+  generatePointsOnMeshCS: {fileID: 7200000, guid: ac0a8d31e7a031d47862c3e836426444, type: 3}
+  grassComputeShader: {fileID: 7200000, guid: 5e28cb2b7c3a3934eb23f956c696f058, type: 3}
+  material: {fileID: 2100000, guid: 5fdc195192bb0504396a0f0dba0adfac, type: 2}
+  player: {fileID: 0}
+  Radius: 48
+  ViewDistance: 48
+  DistanceFadeOut: 0.2
+  CameraCulling: 0
+  GrassColor: {r: 0, g: 0, b: 0, a: 0}
+  GrassHeight: 1
+  GrassWidth: 0.08
+  RandomBend: 0.12
+  RandomSize: 0.2
+  RandomRotation: 0.2
+  WindTexture: {fileID: 2800000, guid: a9141e8b17891c74e8a924b1da5c0f29, type: 3}
+  WindScale: 6
+  WindStrength: 0.3
+  WindSpeed: 6

@@ -1,0 +1,139 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+#include "Assets/Scripts/Grass Generation/Shaders/Common.hlsl"
+#include "Assets/Scripts/Grass Generation/Shaders/Random.hlsl"
+#include "Assets/Scripts/Grass Generation/Shaders/GrassInput.hlsl"
+#include "Assets/Scripts/Grass Generation/Shaders/Simplex.hlsl"
+
+StructuredBuffer<SourceVertex> _SourceVertices;
+AppendStructuredBuffer<DrawTriangle> _DrawTriangles;
+RWStructuredBuffer<IndirectDrawArgs> _IndirectArgsBuffer;
+StructuredBuffer<uint> _InfoBuffer;
+
+float3 _CameraPos;
+float3 _PlayerPos;
+float _ViewDistance;
+float _DistanceFadeOut;
+
+uint _MaxGrassBlades;
+
+float _RandomBend;
+float _RandomRotation;
+
+float _GrassHeight;
+float _GrassWidth;
+float _RandomSize;
+half4 _TipColor;
+
+// Wind
+float _WindScale;
+float _WindStrength;
+float _WindSpeed;
+
+float3x3 GetWindRotation(float amount, float3 originWS, float3 normalWS)
+{    
+    float3 windDirectionWS = float3(1, 0, 0);
+    float3 rotationVector = normalize(float3(windDirectionWS.z, 0, -windDirectionWS.x));
+    
+    float2 uv = originWS.xz - windDirectionWS.xz * _WindSpeed * _Time.y;
+    float windNoise = snoise(float3(uv / _WindScale, 0));
+    
+    // Maximum angle to not move into floor
+    float maxAngle = 0.8 * acos(dot(windDirectionWS, -normalWS));
+    float angle = min(maxAngle, windNoise * PI * amount * _WindStrength);
+    
+    return AngleAxis3x3(angle, rotationVector);
+}
+
+DrawVertex CreateDrawVertex(float3 svPosition, float width, float height, float curve, 
+float3 normal, float2 texcoord, float3x3 rotation, float4 color, float h)
+{
+    DrawVertex drawVertex;
+    drawVertex.position = svPosition + mul(rotation, float3(width, height, curve));
+    drawVertex.normal = normal;
+    drawVertex.texcoord = texcoord;
+    drawVertex.color = color;
+    drawVertex.height = h;
+    return drawVertex;
+}
+
+[numthreads(128, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= (uint) _MaxGrassBlades)
+        return;
+    
+    if (id.x >= _InfoBuffer[0])
+        return;
+    
+    SourceVertex sv = _SourceVertices[id.x];
+    uint state = id.x;
+    
+    if (distance(sv.position, _PlayerPos) > _ViewDistance)
+        return;
+    
+    // Rotate grass blade towards camera XZ
+    float3x3 faceCameraXZ = LookAtMatrixXZ(_CameraPos.xyz, sv.position);
+    
+    // Random rotation on XZ plane
+    float randomRot = (RandomValue(state) * 2 - 1) * PI * _RandomRotation;
+    float3x3 randomRotationXZ = AngleAxis3x3(randomRot, float3(0, 1, 0));
+    
+    // Bend in random dir
+    float bendAmount = _RandomBend * (RandomValue(state) * 2 - 1) * PI;
+    float randy = RandomValue(state) * 2 * PI;
+    float3 randomAxis = float3(sin(randy), 0, cos(randy));
+    float3x3 randomBend = AngleAxis3x3(bendAmount, randomAxis);
+    
+    // Wind rotation
+    float3x3 windRotation = GetWindRotation(0.2, sv.position, sv.normal);
+    
+    float3x3 rotation = mul(windRotation, mul(randomBend, mul(randomRotationXZ, faceCameraXZ)));
+    //float3x3 rotation = float3x3(1,0,0,0,1,0,0,0,1);
+    
+    float size = 1.0 + (_RandomSize * (RandomValue(state) * 2 - 1));
+    size *= sv.size;
+    
+    // Fade out by size
+    float d = distance(sv.position, _CameraPos);
+    float fadeOutStart = _ViewDistance * (0.9 - _DistanceFadeOut * RandomValue(state));
+    float fadeOutSize = InverseLerp(_ViewDistance, fadeOutStart, d);
+    size *= fadeOutSize;
+    
+    float height = _GrassHeight * size;
+    float width = _GrassWidth * size;
+    float z = 0.03 * size;
+    
+    float middleHeightA = height * (0.6 + (0.1 * (RandomValue(state) * 2 - 1)));
+    float middleHeightB = height * (0.6 + (0.1 * (RandomValue(state) * 2 - 1)));
+    
+    float4 middleColorA = lerp(sv.color, sv.color, middleHeightA / height);
+    float4 middleColorB = lerp(sv.color, sv.color, middleHeightB / height);
+    
+    float3 bottomNormal = sv.normal;
+    float3 topNormal = lerp(sv.normal, float3(0, 1, 0), 0.25);
+    float3 middleNormal = lerp(bottomNormal, topNormal, 0.45);
+    
+    DrawVertex vBottom = CreateDrawVertex(sv.position, 0, 0, 0, bottomNormal, float2(0.5, 0.0), rotation, sv.color, 0.0);
+    DrawVertex vLeft = CreateDrawVertex(sv.position, -width * 0.5, middleHeightA, z, middleNormal, float2(0.0, 0.5), rotation, middleColorA, 0.6);
+    DrawVertex vRight = CreateDrawVertex(sv.position, width * 0.5, middleHeightB, z, middleNormal, float2(1.0, 0.5), rotation, middleColorB, 0.6);
+    DrawVertex vTop = CreateDrawVertex(sv.position , 0, height, 0, topNormal, float2(0.5, 1.0), rotation, sv.color, 1.0);
+    
+    DrawTriangle lowerTri;
+    lowerTri.color = sv.color;
+    lowerTri.vertices[0] = vBottom;
+    lowerTri.vertices[1] = vRight;
+    lowerTri.vertices[2] = vLeft;
+    
+    DrawTriangle upperTri;
+    upperTri.color = sv.color;
+    upperTri.vertices[0] = vLeft;
+    upperTri.vertices[1] = vRight;
+    upperTri.vertices[2] = vTop;
+    
+    _DrawTriangles.Append(lowerTri);
+    _DrawTriangles.Append(upperTri);
+    
+    InterlockedAdd(_IndirectArgsBuffer[0].vertexCountPerInstance, 6);
+}

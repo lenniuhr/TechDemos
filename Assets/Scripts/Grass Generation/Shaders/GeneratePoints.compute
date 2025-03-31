@@ -1,0 +1,131 @@
+#pragma kernel CSMain
+
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Assets/Scripts/Grass Generation/Shaders/GrassInput.hlsl"
+#include "Assets/Scripts/Grass Generation/Shaders/Random.hlsl"
+
+#define MAX_DENSITY 64
+
+// Terrain variables
+float3 _TerrainSize;
+float3 _TerrainPosition;
+float _HeightMapResolution;
+float3 _BlockPosition;
+float3 _HeightMapScale;
+int _BlockID;
+
+// Textures
+Texture2D _HeightMap;       SamplerState sampler_HeightMap;
+Texture2D _NoiseTex;        SamplerState sampler_NoiseTex;
+Texture2D _BaseMap;         SamplerState sampler_BaseMap;
+
+// Target buffers
+AppendStructuredBuffer<SourceVertex> _SourceVertices;
+RWStructuredBuffer<uint> _InfoBuffer;
+
+float2 GetTerrainUVFromPosition(float3 positionWS)
+{
+    float3 positionOS = positionWS - _TerrainPosition;
+    return positionOS.xz / _TerrainSize.xz;
+}
+
+half4 SampleColor(float3 positionWS)
+{
+    float2 uv = GetTerrainUVFromPosition(positionWS);
+    return _BaseMap.SampleLevel(sampler_BaseMap, uv * 32, 6);
+}
+
+float SampleNoise(float3 positionWS)
+{
+    float2 uv = GetTerrainUVFromPosition(positionWS);
+    return _NoiseTex.SampleLevel(sampler_NoiseTex, uv, 0).r;
+}
+
+
+
+float SampleHeight(float3 positionWS)
+{
+    float2 uv = GetTerrainUVFromPosition(positionWS);
+    
+    // Map the [0, 1] uvs to the heightmap which has 1 pixel more and is shifted half a pixel
+    uv += float2(0.5 / _HeightMapResolution, 0.5 / _HeightMapResolution);
+    uv *= ((_HeightMapResolution - 1) / _HeightMapResolution);
+    
+    float height = UnpackHeightmap(_HeightMap.SampleLevel(sampler_HeightMap, uv, 0));
+    return height * _HeightMapScale.y * 2.0;
+}
+
+float3 GetVertexPosition(float x, float z)
+{
+    float height = SampleHeight(float3(x, 0, z));
+    return float3(x, height, z);
+}
+
+#define NEIGHBOR_OFFSET 0.5
+
+float3 SampleTerrainNormal(float3 position)
+{
+    float3 left = GetVertexPosition(position.x - NEIGHBOR_OFFSET, position.z);
+    float3 right = GetVertexPosition(position.x + NEIGHBOR_OFFSET, position.z);
+    float3 back = GetVertexPosition(position.x, position.z - NEIGHBOR_OFFSET);
+    float3 fwd = GetVertexPosition(position.x, position.z + NEIGHBOR_OFFSET);
+
+    return normalize(cross(right - left, back - fwd));
+
+}
+
+float SampleArea(float3 p0)
+{
+    float3 p1 = p0 + float3(0, 0, _HeightMapScale.z);
+    float3 p2 = p0 + float3(_HeightMapScale.x, 0, 0);
+    float3 p3 = p0 + float3(_HeightMapScale.x, 0, _HeightMapScale.z);
+    
+    p0.y = SampleHeight(p0);
+    p1.y = SampleHeight(p1);
+    p2.y = SampleHeight(p2);
+    p3.y = SampleHeight(p3);
+    
+    return length(cross(p1 - p0, p3 - p0)) * 0.5 + length(cross(p2 - p0, p3 - p0)) * 0.5;
+}
+
+[numthreads(16, 1, 16)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    // Mesh resolution is the distance between two height map samples
+    float x = id.x * _HeightMapScale.x + _BlockPosition.x;
+    float z = id.z * _HeightMapScale.z + _BlockPosition.z;
+    float3 p0 = GetVertexPosition(x, z);
+    
+    uint state = 16 * id.x + id.z + _BlockID;
+    
+    // Calculate number of source vertices
+    float area = SampleArea(p0);
+    int numPoints = min(MAX_DENSITY * 0.5, round(area * MAX_DENSITY));
+    
+    for (float i = 0; i < numPoints; i++)
+    {
+        float3 randomOffset = float3(RandomValue(state), 0, RandomValue(state)) * _HeightMapScale.x;
+        
+        float3 randomPoint = p0 + randomOffset;
+        randomPoint.y = SampleHeight(randomPoint);
+        
+        float p = SampleNoise(randomPoint);
+        if (p < RandomValue(state))
+            continue;
+        
+        float3 normal = SampleTerrainNormal(randomPoint);
+        if (normal.y < 0.75)
+        {
+            continue;
+        }
+        
+        SourceVertex sv;
+        sv.position = randomPoint;
+        sv.normal = normal;
+        sv.color = SampleColor(randomPoint);
+        sv.size = lerp(0.5, 1.0, p);
+        _SourceVertices.Append(sv);
+        
+        InterlockedAdd(_InfoBuffer[0], 1);
+    }
+}

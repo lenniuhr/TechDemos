@@ -1,0 +1,98 @@
+#pragma kernel CSMain
+
+#include "Assets/Scripts/Grass Generation/Shaders/GrassInput.hlsl"
+#include "Assets/Scripts/Grass Generation/Shaders/Random.hlsl"
+
+#define MAX_DENSITY 64
+
+// Grass mesh buffers
+StructuredBuffer<int> _Triangles;
+StructuredBuffer<float3> _Positions;
+StructuredBuffer<float3> _Normals;
+
+uint _StartIndex;
+uint _TriangleCount;
+uint _BlockID;
+
+float3 _TerrainSize;
+float _HeightMapResolution;
+
+Texture2D _BaseMap;         SamplerState sampler_BaseMap;
+
+// Target buffers
+AppendStructuredBuffer<SourceVertex> _SourceVertices;
+RWStructuredBuffer<uint> _InfoBuffer;
+
+half4 SampleColor(float3 position)
+{
+    float2 uv = position.xz / _TerrainSize.xz + float2(0.5 / _HeightMapResolution, 0.5 / _HeightMapResolution);
+    return _BaseMap.SampleLevel(sampler_BaseMap, uv, 0);
+}
+
+void GetBaryCoords(float3 p, float3 a, float3 b, float3 c, out float u, out float v, out float w)
+{
+    float3 v0 = b - a, v1 = c - a, v2 = p - a;
+    float d00 = dot(v0, v0);
+    float d01 = dot(v0, v1);
+    float d11 = dot(v1, v1);
+    float d20 = dot(v2, v0);
+    float d21 = dot(v2, v1);
+    float denom = d00 * d11 - d01 * d01;
+    v = (d11 * d20 - d01 * d21) / denom;
+    w = (d00 * d21 - d01 * d20) / denom;
+    u = 1.0f - v - w;
+}
+
+// Returns a random point in the triangle defined by a, b and c.
+float3 RandomPointInTriangle(float3 a, float3 b, float3 c, inout uint state)
+{
+    float2 r = float2(RandomValue(state), RandomValue(state));
+    if (r.x + r.y > 1.0)
+    {
+        r.x = 1.0 - r.x;
+        r.y = 1.0 - r.y;
+    }
+    
+    float3 w = r.x * (b - a) + r.y * (c - a);
+    return a + w;
+}
+
+[numthreads(128, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _TriangleCount)
+        return;
+    
+    // Sample points from mesh buffers    
+    float3 posA = _Positions[_Triangles[_StartIndex + id.x * 3]];
+    float3 posB = _Positions[_Triangles[_StartIndex + id.x * 3 + 1]];
+    float3 posC = _Positions[_Triangles[_StartIndex + id.x * 3 + 2]];
+    
+    float3 normalA = _Normals[_Triangles[_StartIndex + id.x * 3]];
+    float3 normalB = _Normals[_Triangles[_StartIndex + id.x * 3 + 1]];
+    float3 normalC = _Normals[_Triangles[_StartIndex + id.x * 3 + 2]];
+    
+    uint state = 16 * id.x + id.z + _BlockID;
+    float area = length(cross(posB - posA, posC - posA)) * 0.5;
+    
+    // Generate points inside triangle
+    for (float i = 0; i < area * MAX_DENSITY; i++)
+    {
+        float3 position = RandomPointInTriangle(posA, posB, posC, state);
+        
+        // Calculate smooth normal
+        float u, v, w;
+        GetBaryCoords(position, posA, posB, posC, u, v, w);
+        float3 normal = normalize(normalA * u + normalB * v + normalC * w);
+        
+        SourceVertex sv;
+        sv.position = position;
+        sv.normal = normal;
+        sv.color = SampleColor(position);
+        sv.size = 1.0;
+        _SourceVertices.Append(sv);
+        
+        InterlockedAdd(_InfoBuffer[0], 1);
+    }
+}
+
