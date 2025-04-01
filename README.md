@@ -21,8 +21,8 @@ This grass generator generates hundreds of thousands of grass blades on Unity Te
 4. At every frame, grass blades are spawned with a proper wind animation and displayed via RenderPrimitives.
 
 The most important files:
-1. **GrassMap.cs**:
-2. **GrassGenerator.cs**:
-3. **GrassChunk.cs**:
+1. **GrassMap.cs**: The component can be added to any Unity terrain object to enable grass spawning. It also generates a placement mesh for mesh objects within a selected layer, that lie within the bounds of the terrain.
+2. **GrassGenerator.cs**: Based on the information from the GrassMaps, the generator executes compute shaders to spawn grass on the Unity Terrain and on placement meshes. This is done chunk-based and around a given target, e.g. the player character.
+3. **GrassChunk.cs**: The GrassChunks are objects that are managed by the GrassGenerator and are used to create and render grass blades each frame. 
 
 <img src="https://github.com/lenniuhr/TechDemos/blob/main/Images/GrassGeneratorGizmos.png" width=49.6% height=49.6%> <img src="https://github.com/lenniuhr/TechDemos/blob/main/Images/GrassGenerator.png" width=49.6% height=49.6%>
