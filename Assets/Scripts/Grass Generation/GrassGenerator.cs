@@ -39,17 +39,14 @@ namespace LenniUhr.Grass
         public float WindStrength = 1.0f;
         public float WindSpeed = 4.0f;
 
-        // Private variables
-        private Bounds m_Bounds;
-
         private const int BLOCK_SIZE = 8;
         private const int MAX_DENSITY = 64; // Grass blades per square meter
         private const int MAX_SV_PER_BLOCK = BLOCK_SIZE * BLOCK_SIZE * MAX_DENSITY * 2;  // Double the area * density
 
+        // Private variables
+        private Bounds m_Bounds;
         private GrassMap[] m_GrassMaps;
-
         private Dictionary<Vector2Int, GrassBlock> activeBlocks;
-
         private bool m_Initialized = false;
 
         // Compute shader stuff
@@ -195,12 +192,6 @@ namespace LenniUhr.Grass
                 grassComputeShader.Dispatch(m_Kernel, m_DispatchSize, 1, 1);
             }
 
-            /*float area = Radius * Radius * math.PI;
-            int maxDrawTriangles = (int)(2 * area * MAX_DENSITY) * 2;
-            GraphicsBuffer.IndirectDrawArgs[] drawArgs = new GraphicsBuffer.IndirectDrawArgs[1];
-            m_CommandBuffer.GetData(drawArgs);
-            Debug.Log("Command buffer vertex count: " + drawArgs[0].vertexCountPerInstance + ", max draw triangles: " + maxDrawTriangles);*/
-
             RenderParams rp = new RenderParams(material);
             rp.worldBounds = m_Bounds;
             rp.shadowCastingMode = ShadowCastingMode.Off;
@@ -221,26 +212,6 @@ namespace LenniUhr.Grass
             Vector3 offset = new Vector3(BLOCK_SIZE / 2, 0, BLOCK_SIZE / 2);
             Vector3 size = new Vector3(BLOCK_SIZE, 2, BLOCK_SIZE);
             return new Bounds(blockPos + offset, size);
-        }
-
-        private void GenerateGrassBlocks()
-        {
-            GetMinMaxIndices(out int minIndexX, out int maxIndexX, out int minIndexZ, out int maxIndexZ);
-            float sqrRadius = Radius * Radius;
-
-            for(int x = minIndexX; x <= maxIndexX; x++)
-            {
-                for (int z = minIndexZ; z <= maxIndexZ; z++)
-                {
-                    Vector2Int id = new Vector2Int(x, z);
-                    Bounds bounds = GetBlockBounds(id);
-
-                    if (Utils.SqrDistanceXZ(bounds, player.position) > sqrRadius)
-                        continue;
-                    
-                    CreateBlock(id, bounds);
-                }
-            }
         }
 
         private void UpdateGrassBlocks()
@@ -355,15 +326,8 @@ namespace LenniUhr.Grass
             generatePointsCS.SetInt("_BlockID", id.x + 16 * id.y);
             generatePointsCS.SetBuffer(kernel, "_InfoBuffer", infoBuffer);
 
-            //Debug.Log("Terrain size: " + terrain.terrainData.size);
-            //Debug.Log("Heightmap resolution: " + terrain.terrainData.heightmapResolution);
-
             // Dispatch compute shader
             generatePointsCS.Dispatch(kernel, 1, 1, 1);
-
-            //uint[] info = new uint[1];
-            //infoBuffer.GetData(info);
-            //Debug.Log("Source vertex count before: " + info[0] + "/" + MAX_SV_PER_BLOCK);
 
             // Spawn grass on meshes
             // TODO: Improve for multiple blocks
@@ -391,9 +355,6 @@ namespace LenniUhr.Grass
                 int dispatchSize = Mathf.CeilToInt((float)triangleCount / threadGroupSize);
                 generatePointsOnMeshCS.Dispatch(kernel, dispatchSize, 1, 1);
             }
-
-            //infoBuffer.GetData(info);
-            //Debug.Log("Source vertex count after: " + info[0] + "/" + MAX_SV_PER_BLOCK);
 
             // Finish grass block initialization
             GrassBlock block = new GrassBlock();

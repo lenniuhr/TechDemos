@@ -5,12 +5,10 @@ using UnityEngine;
 public class TerrainChunk
 {
     public Vector3 position;
-
     public GameObject meshObject;
+    public MeshFilter meshFilter;
 
     private Mesh mesh;
-
-    public MeshFilter meshFilter;
     private MeshRenderer meshRenderer;
     private MeshCollider meshCollider;
 
