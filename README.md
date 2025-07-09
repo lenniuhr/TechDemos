@@ -11,7 +11,7 @@ The most important files:
 3. **DensityBox.cs**: These objects determine where density is placed in the world. Different DensityBox classes exist for different layered noise density functions.
 4. **MarchingCubes.compute and other compute shaders**: Contain the core implementation of the used algorithms and are executed by the TerrainGenerator.
 
-<img src="https://github.com/lenniuhr/TechDemos/blob/main/Images/TerrainGeneratorGizmos.png" width=49.6% height=49.6%> <img src="https://github.com/lenniuhr/TechDemos/blob/main/Images/TerrainGenerator.png" width=49.6% height=49.6%>
+<img src="https://github.com/lenniuhr/TechDemos/blob/main/Images/TerrainGeneratorGizmos.png" width=49.6%> <img src="https://github.com/lenniuhr/TechDemos/blob/main/Images/TerrainGenerator.png" width=49.6%>
 
 ## Grass Generator
 
@@ -27,4 +27,4 @@ The most important files:
 3. **GrassBlock.cs**: The GrassBlocks are objects that are managed by the GrassGenerator and are used to create and render grass blades each frame.
 4. **GrassBlades.compute and other compute shaders**: Contain the placement and generation logic for the grass blades.
 
-<img src="https://github.com/lenniuhr/TechDemos/blob/main/Images/GrassGeneratorGizmos.png" width=49.6% height=49.6%> <img src="https://github.com/lenniuhr/TechDemos/blob/main/Images/GrassGenerator.png" width=49.6% height=49.6%>
+<img src="https://github.com/lenniuhr/TechDemos/blob/main/Images/GrassGeneratorGizmos.png" width=49.6%> <img src="https://github.com/lenniuhr/TechDemos/blob/main/Images/GrassGenerator.png" width=49.6%>
